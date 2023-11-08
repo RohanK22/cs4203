@@ -103,10 +103,14 @@ class ChatServer:
         except:
             logging.error("Invalid thread_send_message: {message}")
 
+        logging.info(
+            f"Received message from {username} to thread {thread_id}. Message: {message_content}"
+        )
+
         if thread_id not in self.thread_id_to_users:
             message["status"] = "Thread does not exist"
         else:
-            self.thread_id_to_messages[thread_id].append((username, message["message"]))
+            self.thread_id_to_messages[thread_id].append((username, message_content))
             message["status"] = "Message sent successfully"
 
         message["action"] = "thread_send_message_response"
@@ -165,6 +169,50 @@ class ChatServer:
         await sender_websocket.send(json.dumps(message))
         logging.info(f"User {username} retrieved thread creator for {thread_id}")
 
+    async def handle_thread_key_request(self, sender_websocket, message):
+        try:
+            thread_id = message["thread_id"]
+            username = message["username"]
+        except:
+            logging.error("Invalid get_thread_creator: {message}")
+            return
+
+        # send this message to creator
+        if thread_id not in self.thread_id_to_users:
+            message["status"] = "Thread does not exist"
+        else:
+            thread_creator_username = self.thread_id_to_creator[thread_id]
+            thread_creator_socket = self.user_socket[thread_creator_username]
+
+            logging.info(f"Sending thread key request to {thread_creator_username}")
+
+            requestor_public_key = self.user_public_key[username]
+            message["requestor_public_key"] = requestor_public_key
+
+            message = json.dumps(message)
+
+            await thread_creator_socket.send(message)
+        # logging.info(f"User {username} retrieved thread creator for {thread_id}")
+
+    async def handle_thread_key_response(self, sender_websocket, message):
+        try:
+            thread_id = message["thread_id"]
+            username = message["username"]
+            responder_username = message["responder_username"]
+        except:
+            logging.error("Invalid get_thread_creator: {message}")
+            return
+
+        logging.info(f"Received thread key response from {responder_username}")
+
+        # get user websocket
+        user_socket = self.user_socket[username]
+        message["responder_public_key"] = self.user_public_key[responder_username]
+
+        message = json.dumps(message)
+
+        await user_socket.send(message)
+
     async def message_handler(self, websocket):
         async for message_str in websocket:
             try:
@@ -188,6 +236,10 @@ class ChatServer:
                 await self.handle_get_public_key(websocket, message)
             elif message["action"] == "get_thread_creator":
                 await self.handle_get_thread_creator(websocket, message)
+            elif message["action"] == "thread_key_request":
+                await self.handle_thread_key_request(websocket, message)
+            elif message["action"] == "thread_key_response":
+                await self.handle_thread_key_response(websocket, message)
 
     async def start_server(self, host, port):
         server = await websockets.serve(self.message_handler, host, port)
