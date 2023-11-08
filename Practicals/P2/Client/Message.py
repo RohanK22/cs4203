@@ -1,6 +1,7 @@
 import json
 from enum import Enum
 
+
 class MessageType(Enum):
     REGISTER = "REGISTER"
     CREATE_THREAD = "CREATE_THREAD"
@@ -9,6 +10,7 @@ class MessageType(Enum):
     SEND_MESSAGE = "SEND_MESSAGE"
     GET_MESSAGES = "GET_MESSAGES"
     GET_THREADS = "GET_THREADS"
+
 
 class Message:
     def __init__(self, message_type, data):
@@ -23,13 +25,13 @@ class Message:
 
     def to_json(self):
         return {
-            "message_type": MessageType(self.message_type).name,
+            "message_type": self.message_type,
             "data": self.data,
         }
 
     @classmethod
     def from_json(cls, json):
-        return cls(MessageType[json["message_type"]], json["data"])
+        return cls(json["message_type"], json["data"])
 
 
 def encode_json(message: Message) -> str:

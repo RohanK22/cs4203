@@ -1,12 +1,12 @@
 import asyncio
-import websockets
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
-
 import os
+
+import websockets
 from crypto_utils import load_ec_key_pair
-from Message import decode_json, encode_json, Message, MessageType
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from Message import Message, MessageType, decode_json, encode_json
 
 # Replace this key with the server's secret key
 SECRET_KEY = b"UoJQgRHVAZas_m2TtDJYOIpYf6lbqB6VtCL4BD1_dU0="
@@ -25,7 +25,10 @@ async def hello():
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
 
-        m = Message(MessageType.REGISTER, {"username": "alice", "public_key": public_key_bytes.decode()})
+        m = Message(
+            "REGISTER",
+            {"username": "alice", "public_key": public_key_bytes.decode()},
+        )
 
         print(encode_json(m))
         await websocket.send(encode_json(m))
@@ -36,25 +39,27 @@ async def hello():
         print(f"> Received response: {response}")
         response = decode_json(response)
 
-
         messageMode = False
         messageHistory = []
 
         # TODO: Check if registration was successful
         while True:
             if not messageMode:
-                print('Pick an option: ')
-                print('1. Create thread')
-                print('2. Join thread')
-                print('3. Leave thread')
-                print('4. Get threads')
-                print('5. Enter Message Mode')
+                print("Pick an option: ")
+                print("1. Create thread")
+                print("2. Join thread")
+                print("3. Leave thread")
+                print("4. Get threads")
+                print("5. Enter Message Mode")
 
                 option = input("Select an option: ")
 
-                if option == '1':
+                if option == "1":
                     thread_id = input("Enter thread id: ")
-                    m = Message(MessageType.CREATE_THREAD, {"thread_id": thread_id, "sender": "alice"})
+                    m = Message(
+                        "CREATE_THREAD",
+                        {"thread_id": thread_id, "sender": "alice"},
+                    )
                     await websocket.send(encode_json(m))
                     response = await websocket.recv()
                     print(f"> Received response: {response}")
@@ -65,31 +70,42 @@ async def hello():
                     # generate 32 byte shared secret
                     shared_secret = Fernet.generate_key()
 
-                elif option == '2':
+                    print(shared_secret)
+
+                elif option == "2":
                     thread_id = input("Enter thread id: ")
-                    m = Message(MessageType.JOIN_THREAD, {"thread_id": thread_id, "sender": "alice"})
+                    m = Message(
+                        MessageType.JOIN_THREAD,
+                        {"thread_id": thread_id, "sender": "alice"},
+                    )
                     await websocket.send(encode_json(m))
                     response = await websocket.recv()
                     print(f"> Received response: {response}")
                     response = decode_json(response)
-                elif option == '3':
+                elif option == "3":
                     thread_id = input("Enter thread id: ")
-                    m = Message(MessageType.LEAVE_THREAD, {"thread_id": thread_id, "sender": "alice"})
+                    m = Message(
+                        MessageType.LEAVE_THREAD,
+                        {"thread_id": thread_id, "sender": "alice"},
+                    )
                     await websocket.send(encode_json(m))
                     response = await websocket.recv()
                     print(f"> Received response: {response}")
                     response = decode_json(response)
-                elif option == '4':
+                elif option == "4":
                     m = Message(MessageType.GET_THREADS, {"sender": "alice"})
                     await websocket.send(encode_json(m))
                     response = await websocket.recv()
                     print(f"> Received response: {response}")
                     response = decode_json(response)
-                    # print out threads
-                elif option == '5':
-                    # fetch messages from thread
+                    # print out threads
+                elif option == "5":
+                    # fetch messages from thread
                     thread_id = input("Enter thread id: ")
-                    m = Message(MessageType.GET_MESSAGES, {"thread_id": thread_id, "sender": "alice"})
+                    m = Message(
+                        MessageType.GET_MESSAGES,
+                        {"thread_id": thread_id, "sender": "alice"},
+                    )
                     await websocket.send(encode_json(m))
                     response = await websocket.recv()
                     print(f"> Received response: {response}")
@@ -100,12 +116,9 @@ async def hello():
 
                     # do ECDH with owner of thread to get shared secret
 
-
-
                     response = await websocket.recv()
             else:
-                print('You are in message mode')
-
+                print("You are in message mode")
 
             # encrypted_message = cipher_suite.encrypt(message.encode()).decode()
             # await websocket.send(encrypted_message)
