@@ -4,6 +4,8 @@ import logging
 
 import websockets
 
+logging.basicConfig(level=logging.INFO)
+
 
 class ChatServer:
     def __init__(self):
@@ -22,7 +24,7 @@ class ChatServer:
             username = message["username"]
             public_key = message["public_key"]
         except:
-            logging.error("Invalid key_upload message: {message}")
+            logging.error(f"Invalid key_upload message: {message}")
 
         self.user_public_key[username] = public_key
         self.user_socket[username] = sender_websocket
@@ -30,7 +32,7 @@ class ChatServer:
         message["action"] = "key_upload_response"
         message["status"] = "Registered successfully"
         await sender_websocket.send(json.dumps(message))
-        logging.info("User registered: {username}")
+        logging.info(f"User registered: {username}")
 
     # Create a thread
     async def handle_thread_create(self, sender_websocket, message):
@@ -40,7 +42,7 @@ class ChatServer:
             thread_id = message["thread_id"]
             username = message["username"]
         except:
-            logging.error("Invalid create_thread: {message}")
+            logging.error(f"Invalid create_thread: {message}")
         if thread_id in self.thread_id_to_users:
             message["status"] = "Thread already exists"
         else:
@@ -105,17 +107,13 @@ class ChatServer:
             message["status"] = "Thread does not exist"
         else:
             self.thread_id_to_messages[thread_id].append((username, message["message"]))
-
-            # for user in self.thread_id_to_users[thread_id]:
-            #     if user != username:
-            #         message["action"] = "incoming_message"
-            #         self.user_socket[user].send(json.dumps(message))
             message["status"] = "Message sent successfully"
 
         message["action"] = "thread_send_message_response"
         await sender_websocket.send(json.dumps(message))
         logging.info(f"User {username} sent message to thread {thread_id}")
 
+    # Retrieve messages that belongs to a thread
     async def handle_thread_read_message(self, sender_websocket, message):
         try:
             thread_id = message["thread_id"]
@@ -132,6 +130,40 @@ class ChatServer:
         message["action"] = "thread_read_message_response"
         await sender_websocket.send(json.dumps(message))
         logging.info(f"User {username} read messages from thread {thread_id}")
+
+    async def handle_get_public_key(self, sender_websocket, message):
+        try:
+            username = message["username"]
+            target_username = message["target_username"]
+        except:
+            logging.error("Invalid get_public_key: {message}")
+
+        if target_username not in self.user_public_key:
+            message["status"] = "User does not exist"
+        else:
+            message["public_key"] = self.user_public_key[target_username]
+            message["status"] = "Public key retrieved successfully"
+
+        message["action"] = "get_public_key_response"
+        await sender_websocket.send(json.dumps(message))
+        logging.info(f"User {username} retrieved public key for {target_username}")
+
+    async def handle_get_thread_creator(self, sender_websocket, message):
+        try:
+            thread_id = message["thread_id"]
+            username = message["username"]
+        except:
+            logging.error("Invalid get_thread_creator: {message}")
+
+        if thread_id not in self.thread_id_to_users:
+            message["status"] = "Thread does not exist"
+        else:
+            message["thread_creator"] = self.thread_id_to_creator[thread_id]
+            message["status"] = "Thread creator retrieved successfully"
+
+        message["action"] = "get_thread_creator_response"
+        await sender_websocket.send(json.dumps(message))
+        logging.info(f"User {username} retrieved thread creator for {thread_id}")
 
     async def message_handler(self, websocket):
         async for message_str in websocket:
@@ -152,8 +184,10 @@ class ChatServer:
                 await self.handle_thread_send_message(websocket, message)
             elif message["action"] == "read_message":
                 await self.handle_thread_read_message(websocket, message)
-            # elif message["action"] == "get_public_key":
-            #     await self.handle_get_public_key(websocket, message)
+            elif message["action"] == "get_public_key":
+                await self.handle_get_public_key(websocket, message)
+            elif message["action"] == "get_thread_creator":
+                await self.handle_get_thread_creator(websocket, message)
 
     async def start_server(self, host, port):
         server = await websockets.serve(self.message_handler, host, port)
