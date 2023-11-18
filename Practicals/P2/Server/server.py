@@ -9,14 +9,17 @@ logging.basicConfig(level=logging.INFO)
 
 class ChatServer:
     def __init__(self):
-        self.groups = dict()
-
         self.user_public_key = dict()
         self.user_socket = dict()
 
         self.thread_id_to_users = dict()
         self.thread_id_to_messages = dict()
         self.thread_id_to_creator = dict()
+
+        self.logger = logging.getLogger("ChatServer")
+        self.logger.setLevel(logging.INFO)
+
+        self.websocket = None
 
     # Save public key for user
     async def handle_key_upload(self, sender_websocket, message):
@@ -37,12 +40,12 @@ class ChatServer:
     # Create a thread
     async def handle_thread_create(self, sender_websocket, message):
         # TODO: Check if user exists / registered
-
         try:
             thread_id = message["thread_id"]
             username = message["username"]
         except:
             logging.error(f"Invalid create_thread: {message}")
+
         if thread_id in self.thread_id_to_users:
             message["status"] = "Thread already exists"
         else:
@@ -58,7 +61,6 @@ class ChatServer:
 
     # Join a thread
     async def handle_thread_join(self, sender_websocket, message):
-        # TODO: Do ECDH to get shared key from group creator
         try:
             thread_id = message["thread_id"]
             username = message["username"]
@@ -94,6 +96,19 @@ class ChatServer:
         await sender_websocket.send(json.dumps(message))
         logging.info(f"User {username} left thread {thread_id}")
 
+    async def broadcast_message_to_thread(self, thread_id, message, sender_username):
+        if thread_id in self.thread_id_to_users:
+            participants = self.thread_id_to_users[thread_id]
+            for participant in participants:
+                if participant == sender_username:
+                    continue
+                try:
+                    await self.user_socket[participant].send(json.dumps(message))
+                except Exception as e:
+                    self.logger.error(
+                        f"Error broadcasting message to {participant}: {e}"
+                    )
+
     # Send a message to a thread
     async def handle_thread_send_message(self, sender_websocket, message):
         try:
@@ -112,6 +127,16 @@ class ChatServer:
         else:
             self.thread_id_to_messages[thread_id].append((username, message_content))
             message["status"] = "Message sent successfully"
+
+            broadcast_message = {
+                "action": "new_message",
+                "thread_id": thread_id,
+                "sender": username,
+                "message": message_content,
+            }
+            await self.broadcast_message_to_thread(
+                thread_id, broadcast_message, username
+            )
 
         message["action"] = "thread_send_message_response"
         await sender_websocket.send(json.dumps(message))
@@ -214,6 +239,7 @@ class ChatServer:
         await user_socket.send(message)
 
     async def message_handler(self, websocket):
+        self.websocket = websocket
         async for message_str in websocket:
             try:
                 message = json.loads(message_str)
@@ -246,11 +272,19 @@ class ChatServer:
         await server.wait_closed()
 
 
-async def main():
-    server = ChatServer()
+async def main(server):
     async with websockets.serve(server.message_handler, "", 8765, ping_interval=None):
         await asyncio.Future()  # run forever
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        server = ChatServer()
+        asyncio.run(main(server))
+    except KeyboardInterrupt:
+        print("Exiting...")
+    except Exception as e:
+        print(e)
+    finally:
+        if server.websocket.open:
+            server.websocket.close()
